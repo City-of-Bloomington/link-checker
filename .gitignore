@@ -1,0 +1,8 @@
+*.json
+instances.txt
+launch.sh
+todo.txt
+journal.txt
+geckodriver.log
+*~
+*.pyc
