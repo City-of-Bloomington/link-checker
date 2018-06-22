@@ -6,3 +6,4 @@ journal.txt
 geckodriver.log
 *~
 *.pyc
+results/

@@ -43,20 +43,7 @@ def check_ignore(item, ignores=[]):
             ignore = True
     return ignore
 
-def cas_login(driver, base):
-    ## TODO:
-    # navigate to CAS login
-    cas_login = base + '/' + 'caslogin'
-    driver.get(cas_login)
-    # (manually log in)
-
-def admin_aliases(driver, base):
-    # assumes cas_login completed already
-    # use admin interface to convert taxonomy terms to nodes
-    admin_base = base + '/' + 'admin/config/search/path'
-    driver.get(admin_base)
-
-def check_page(driver, base, page, complete, todo, external, errors):
+def check_page(driver, page, complete, todo, external, errors, lookups):
     """
     load a page
     scan for links and other checks
@@ -72,7 +59,7 @@ def check_page(driver, base, page, complete, todo, external, errors):
 
     r = None
     try:
-        #check for page response here
+        # check for page response here
         r = requests.get(page)
         print r.status_code
     except:
@@ -84,18 +71,18 @@ def check_page(driver, base, page, complete, todo, external, errors):
             errors[page][cur_error].append(page)
 
     else:
+        # only need to process page if it's an internal page
+        # otherwise checking the response code (previously) is sufficient
         if re.search('bloomington.in.gov', page):
-            #only need to process page if it's an internal page
-            #otherwise checking a response code is sufficient
-            driver.get(page)
-
-            links = driver.find_elements_by_tag_name("a")
             if not errors.has_key(page):
                 errors[page] = {}
 
+            driver.get(page)
+            links = driver.find_elements_by_tag_name("a")
+            
             for link in links:
                 href = link.get_attribute('href')
-                print "Checking link: ", href
+                #print "Checking link: ", href
                 if not href:
                     #for example
                     #<a id="main-content" tabindex="-1"></a>
@@ -113,57 +100,96 @@ def check_page(driver, base, page, complete, todo, external, errors):
                     print href
                     #these can show up if people put a '/'
                     #in front of an external link in a link field in drupal
-                    #catch them now to prevent issues
+                    #catch them now and fix to prevent issues
                     raise ValueError, "Unknown link type"
+                
+                #https://calendar.google.com/calendar/embed?src=bloomington.in.gov_rm22gcl2hatcmjk0boh75d6pec@group.calendar.google.com&ctz=America/New_York
 
-
-                elif check_ignore(href, ['bloomington.in.gov/onboard', 'caslogin', 'utilities_forms', 'data.bloomington.in.gov', 'bloomingtontransit.com' ]):
-                    #print "Skipping mailto/tel: ", href
-                    pass
+                # There are a lot of integrated systems
+                # we don't want to scan those,
+                # especially if they contain infinite recursions
+                elif check_ignore(href, ['bloomington.in.gov/onboard', 'bloomington.in.gov/alpha/onboard', 'caslogin', 'utilities_forms', 'data.bloomington.in.gov', 'bloomingtontransit.com', '.xls', '.docx', '.doc', '.ppt', 'meetings', '/webtrac/', 'google.com/maps', 'mailto', 'interactive/maps', 'inroads', 'apps.bloomington.in.gov/kb/', 'apps.bloomington.in.gov/helpdesk/', 'bloomington.in.gov/open311-proxy', 'apps.bloomington.in.gov/directory', 'mail.google.com', 'helpdesk', 'resource://pdf.js/web/', 'legislation', 'webtrac.bloomington.in.gov', 'library.municode.com/in/bloomington/codes/', '/boards/innovation/report']):
+                    print "ignoring: ", href
+                    #pass
 
                 elif re.match('mailto', href) or re.match('tel', href):
                     print "Skipping mailto/tel: ", href
+
+                #see crawl_site()... this approach didn't work well
+                ## elif href in previous_errors.keys():
+                ##     cur_error = "previously bad link found"
+                ##     element = link.get_attribute('outerHTML')
+                    
+                ##     if not errors[page].has_key(cur_error):
+                ##         errors[page][cur_error] = []
+                ##     if not element in errors[page][cur_error]:
+                ##         errors[page][cur_error].append(element)
 
                 else:
                     #skip checking anchors:
                     parts = href.split('#')
                     href = parts[0]
+                    
+                    print href
+                    #TODO:
+                    # get rid of leading http(s) ?
+                    # would need to refactor final check below
 
-                    if re.search('shelter-services', href):
-                        raise ValueError, "Found shelter-services link"
+                    #track where the link came from for later troubleshooting
+                    if not lookups.has_key(href):
+                        lookups[href] = [ page ]
+                    if not page in lookups[href]:
+                        lookups[href].append(page)
 
-                    cur_error = "links to old site"
-                    if not re.search(base, href):
-                        print base, href
-                        print "Didn't match main root url that we're scanning"
-                        if re.search('//bloomington.in.gov/', href):
-                            print "%s found" % (cur_error)
-                            if not errors[page].has_key(cur_error):
-                                errors[page][cur_error] = []
-                            if not href in errors[page][cur_error]:
-                                errors[page][cur_error].append(href)
+                    if re.search('bloomington.in.gov/alpha', href):
+                        cur_error = "link to alpha site"
+                        print "%s found" % (cur_error)
+                        if not errors[page].has_key(cur_error):
+                            errors[page][cur_error] = []
+                        if not href in errors[page][cur_error]:
+                            errors[page][cur_error].append(href)
+                    
+                    elif ( re.search('bloomington.in.gov/old', href) or
+                           re.search('tarantula.bloomington.in.gov', href) ):
+                        cur_error = "link to old site"
+                        print "%s found" % (cur_error)
+                        if not errors[page].has_key(cur_error):
+                            errors[page][cur_error] = []
+                        if not href in errors[page][cur_error]:
+                            errors[page][cur_error].append(href)
 
-                        elif not re.search('bloomington.in.gov/', href):
-                            # must be an external link
-                            if not href in external:
-                                external.append(href)
-                            if (not href in todo) and (not href in complete):
-                                todo.append(href)
+                    elif ( re.search('bloomington.in.gov/code', href) ):
+                        cur_error = "link to old host for muni code"
+                        print "%s found" % (cur_error)
+                        if not errors[page].has_key(cur_error):
+                            errors[page][cur_error] = []
+                        if not href in errors[page][cur_error]:
+                            errors[page][cur_error].append(href)
 
-                    else:
-                        #must be an internal link...
-                        cur_error = "links with no alias"
-                        if re.search('node', href):
-                            print "%s found: %s" % (cur_error, href)
-                            if not errors[page].has_key(cur_error):
-                                errors[page][cur_error] = []
-                            if not href in errors[page][cur_error]:
-                                errors[page][cur_error].append(href)
+                    elif re.search('node', href):
+                        cur_error = "link with no alias"
+                        print "%s found: %s" % (cur_error, href)
+                        if not errors[page].has_key(cur_error):
+                            errors[page][cur_error] = []
+                        if not href in errors[page][cur_error]:
+                            errors[page][cur_error].append(href)
 
-                        if (not href in todo) and (not href in complete) and (href != page):
+                    elif not re.search('bloomington.in.gov/', href):
+                        # must be an external link
+                        if not href in external:
+                            external.append(href)
+                        if (not href in todo) and (not href in complete):
                             todo.append(href)
 
+                    elif (not href in todo) and (not href in complete) and (href != page):
+                        #all obvious problematic links removed...
+                        #add this for scanning later
+                        todo.append(href)
 
+
+
+            #if re.search('business/zoning-districts', page):
+            #    raise ValueError, "found expected page"
 
             #TODO
             #scan source for old markdown style links that were not converted
@@ -178,6 +204,11 @@ def check_page(driver, base, page, complete, todo, external, errors):
                 print str(result)
                 print "Markdown Link found!!"
                 print
+                cur_error = "Page contains an (old) markdown link"
+                if not errors[page].has_key(cur_error):
+                    errors[page][cur_error] = []
+                if not href in errors[page][cur_error]:
+                    errors[page][cur_error].append(href)
 
     if r:
         return r.status_code
@@ -189,8 +220,11 @@ def crawl_site(driver, base):
 
     # visit CAS logout link first...
     # don't want to be logged in for this crawl!!!
-            
     todo_paths = ['/user/logout', '/']
+
+    #possible to prioritize another path first:
+    #todo_paths = ['/user/logout', '/business/zoning-districts', '/']
+    
     todo = []
     for t in todo_paths:
         todo.append(base + t)
@@ -199,14 +233,31 @@ def crawl_site(driver, base):
     complete = []
     external = []
     errors = {}
-    
+
+    # this approach adds complexity, and in practice does not work reliably:
+    # previous_errors = {}
+    ## #load these errors from a saved json file from a previous scan
+    ## loaded_errors = load_json(error_file)
+    ## for item in loaded_errors.items():
+    ##     bad_response = False
+    ##     for key in item.keys():
+    ##         if re.search('Response', key):
+    ##             bad_response = True
+    ##             if not previous_errors.has_key(cur_page):
+    ##                 previous_errors[cur_page] = {}
+    ##                 previous_errors[cur_page]["Bad Response"] = True
+
+    # might be better to track what page a link is found on
+    # then note that when the check fails
+    lookups = {}
+          
     while len(todo):
         print
-        print "Number of pages to scan: ", len(todo)
+        print "%04d complete. %s to go" % (len(complete), len(todo))
         cur_page = todo.pop(0)
         print cur_page
-        result = check_page(driver, base, cur_page, complete, todo, external, errors)
-        print todo
+        result = check_page(driver, cur_page, complete, todo, external, errors, lookups)
+        #print todo
         if result != 200:
             print "Expected 200: ", result
             cur_error = "Response %s" % result
@@ -227,30 +278,53 @@ def crawl_site(driver, base):
     print "Finished: ", end
     print "Scanned %s pages" % (len(complete))
 
-    ts = datetime.now()
-    filename = ts.strftime("%Y%m%d%H%M") + '.json'
-    print 'link_checker_helper.process_results("%s")' % filename
-    save_json(filename, errors)
-        
-    #return (complete, external, errors)
+    destination_dir = 'results'
+    if not os.path.exists(destination_dir):
+        os.makedirs(destination_dir)
 
-def process_results(filename):
-    #(complete, external, errors) = crawl_site(driver, base)
+
+    ts = datetime.now()
+    filename = ts.strftime("%Y%m%d%H%M") + '-errors' + '.json'
+    dest = os.path.join(destination_dir, filename)
+    save_json(dest, errors)
+
+    lookup_file = ts.strftime("%Y%m%d%H%M") + '-lookups' + '.json'
+    #same content as above, but will get overwritten each time
+    lookup_dest = os.path.join(destination_dir, lookup_file)
+    save_json(lookup_dest, lookups)
+
+    print 'link_checker_helper.process_results("%s", "%s")' % (filename, lookup_dest) 
+
+def process_results(filename, lookup_filename):
+    lookups = load_json(lookup_filename)
+
     errors = load_json(filename)
     counter = 0
     for key, value in errors.items():
         if value:
             print
+            #print '<a href="%s">%s</a>' % (key, key)
             print key
             for sub_key, sub_value in value.items():
                 print "  %s" % sub_key
                 if type(sub_value) == list:
                     for item in sub_value:
-                        print "    ", item
+                        print "     ", item
+                        #print '    <a href="%s">%s</a>' % (item, item)
                 else:
                     #print "    ", sub_value
                     pass
             counter += 1
+
+            if key in lookups.keys():
+                print "Appears on:"
+                for item in lookups[key][:10]:
+                    print "     ", item
+                    #print '       <a href="%s">%s</a>' % (item, item)
+                    
+                if len(lookups[key]) > 10:
+                    additional = len(lookups[key]) - 10
+                    print "     + %s additional pages" % additional
             
     #print "Total errors: ", len(errors.items())
     print "Total errors: ", counter

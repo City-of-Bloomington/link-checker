@@ -20,12 +20,15 @@ from selenium import webdriver
 
 #base = "http://rogue.bloomington.in.gov/alpha"
 #base = "http://alpha.bloomington.in.gov"
-base = "https://bloomington.in.gov/alpha"
+#base = "https://bloomington.in.gov/alpha"
+#base = "https://bloomington.in.gov/business/zoning-districts"
+#to start testing at a different path, add it in crawl_sites() function
+base = "https://bloomington.in.gov"
 
 #driver = webdriver.PhantomJS()
 driver = webdriver.Firefox()
 
-driver.set_window_size(1120, 550)
+driver.set_window_size(1120, 890)
 driver.get(base)
 #driver.find_element_by_id('search_form_input_homepage').send_keys("realpython")
 #driver.find_element_by_id("search_button_homepage").click()
@@ -36,6 +39,7 @@ import link_checker_helper
 reload(link_checker_helper)
 
 print "reload(link_checker_helper)"
+print "link_checker_helper.crawl_site(driver, base)"
 
 # may need to enter username and password at this point:
 
@@ -48,10 +52,6 @@ print "reload(link_checker_helper)"
 # on: https://rogue.bloomington.in.gov/alpha/node/185/edit
 # then convert that to an actual working link
 
-
-#link_checker_helper.cas_login(driver, base)
-
-#link_checker_helper.admin_aliases(driver, base)
 
 #link_checker_helper.crawl_site(driver, base)
 
